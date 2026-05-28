@@ -1,0 +1,19 @@
+{
+  "name": "SpringfieldTV",
+  "version": "1.0.0",
+  "main": "updater.js",
+  "bin": "updater.js",
+  "scripts": {
+    "build": "pkg . --targets node16-win-x64 --output SpringfieldTV.exe"
+  },
+  "pkg": {
+    "assets": [
+      "player.js",
+      "config.json"
+    ],
+    "outputPath": "dist"
+  },
+  "dependencies": {
+    "puppeteer": "*"
+  }
+}
