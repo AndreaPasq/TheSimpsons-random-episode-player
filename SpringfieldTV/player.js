@@ -1,6 +1,7 @@
 const puppeteer = require('puppeteer');
 const fs = require('fs');
 const path = require('path');
+const https = require('https');
 
 // === RANGE STAGIONI ===
 const STAGIONI = {
@@ -29,8 +30,32 @@ function episodioCasuale() {
     return { stagione: parseInt(stagione), id: episodio };
 }
 
-// Legge il dominio dal file config.json (locale)
-let DOMINIO = 'streamingcommunityz.company'; // fallback
+const CONFIG_URL = 'https://raw.githubusercontent.com/TheSimpsons-random-episode-player/blob/main/SpringfieldTV/config.json';
+
+function scaricaConfig() {
+    return new Promise((resolve) => {
+        https.get(CONFIG_URL, (res) => {
+            let data = '';
+            res.on('data', chunk => data += chunk);
+            res.on('end', () => {
+                try {
+                    const remoteConfig = JSON.parse(data);
+                    const configPath = path.join(__dirname, 'config.json');
+                    fs.writeFileSync(configPath, JSON.stringify(remoteConfig, null, 2));
+                    console.log(`[OK] Config aggiornato — dominio: ${remoteConfig.domain}`);
+                } catch(e) {
+                    console.log('[WARN] Config remoto non valido, uso quello locale.');
+                }
+                resolve();
+            });
+        }).on('error', () => {
+            console.log('[WARN] Impossibile scaricare config, uso quello locale.');
+            resolve();
+        });
+    });
+}
+
+let DOMINIO = 'streamingcommunityz.company';
 try {
     const configPath = path.join(__dirname, 'config.json');
     if (fs.existsSync(configPath)) {
@@ -45,6 +70,15 @@ try {
 }
 
 (async () => {
+    await scaricaConfig();
+    try {
+        const configPath = path.join(__dirname, 'config.json');
+        const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+        if (config.domain && typeof config.domain === 'string') {
+            DOMINIO = config.domain;
+        }
+    } catch(e) {}
+
     const browser = await puppeteer.launch({
         headless: false,
         defaultViewport: null,
@@ -84,7 +118,6 @@ try {
     });
 
     const SERIE_ID = 1304;
-    const DURATA_MINUTI = 22; // Modifica per test
     const FILE_VISTI = 'episodi_visti.json';
 
     let episodiVisti = [];
@@ -131,7 +164,7 @@ try {
                 const frame = await iframeElement.contentFrame();
                 if (frame) {
                     await frame.waitForSelector('.jw-icon-display', { timeout: 8000 }).catch(() => {});
-                    await frame.click('.jw-icon-display');
+                    await frame.click('.jw-icon-display').catch(() => {});
                     played = true;
                     console.log('[OK] Play (iframe)');
                 }
@@ -151,9 +184,12 @@ try {
                 }
             }
 
+            console.log('In attesa della fine episodio (22 min)...');
+            await sleep(23 * 60 * 1000);
+
         } catch(e) {
             console.log('[ERRORE]', e.message);
-            await sleep(5000);
+            await sleep(23 * 60 * 1000); // anche in caso di errore aspetta 22 minuti
         }
 
         episodiVisti.push({
@@ -163,7 +199,5 @@ try {
         });
         fs.writeFileSync(FILE_VISTI, JSON.stringify(episodiVisti, null, 2));
         console.log(`[Visti: ${episodiVisti.length}] S${ep.stagione} ID:${ep.id}`);
-        console.log(`Attendo ${DURATA_MINUTI} minuti...`);
-        await sleep(DURATA_MINUTI * 60 * 1000);
     }
 })();
